@@ -101,7 +101,7 @@ function renderTableMap() {
         <i class="bi bi-pencil-square"></i>
       </button>
       <button class="${classes}" data-table="${escHtml(t.name)}" data-order-id="${t.order_id || ''}"
-              onclick="selectTable(${nameJs}, ${orderJs})">
+              onclick="selectTable(${escHtml(nameJs)}, ${escHtml(orderJs)})">
         <div class="tname">${escHtml(t.name)}</div>
         <div class="tinfo">${occupied ? escHtml(t.order_no || 'Occupied') : 'Free'}</div>
       </button>
