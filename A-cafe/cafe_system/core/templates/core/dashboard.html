@@ -1,11 +1,21 @@
 {% extends 'core/base.html' %}
 {% block title %}Dashboard — Chiya Garden{% endblock %}
 
+{% block extra_head %}
+<style>
+  .amount-blurred { filter: blur(8px); user-select: none; pointer-events: none; transition: filter .15s ease; }
+  .privacy-amt { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
+  .privacy-toggle { border: none; background: transparent; padding: 0 2px; line-height: 1; color: inherit; opacity: .65; cursor: pointer; flex-shrink: 0; }
+  .privacy-toggle:hover, .privacy-toggle:focus { opacity: 1; outline: none; }
+  .privacy-toggle i { font-size: 1.05rem; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid py-3 px-4">
-  <div class="d-flex align-items-center justify-content-between mb-3">
+  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
     <h4 class="mb-0 fw-bold"><i class="bi bi-speedometer2 text-success"></i> Dashboard</h4>
-    <div class="d-flex gap-2 align-items-center">
+    <div class="d-flex gap-2 align-items-center flex-wrap">
       <input type="date" id="startDate" class="form-control form-control-sm" style="width:140px">
       <span class="text-muted">to</span>
       <input type="date" id="endDate" class="form-control form-control-sm" style="width:140px">
@@ -17,7 +27,15 @@
   <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">
       <div class="card border-0 shadow-sm h-100">
-        <div class="card-body"><div class="text-muted small">Revenue (Period)</div><div class="fs-4 fw-bold text-success" id="kpiRevenue">—</div></div>
+        <div class="card-body">
+          <div class="text-muted small">Total Revenue</div>
+          <div class="privacy-amt">
+            <div class="fs-4 fw-bold text-success amount-blurred" id="kpiRevenue">—</div>
+            <button type="button" class="privacy-toggle text-muted" id="kpiRevenueToggle" onclick="toggleKpiRevenue()" title="Show/hide revenue" aria-label="Toggle revenue visibility">
+              <i class="bi bi-eye-slash"></i>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="col-6 col-md-3">
@@ -100,6 +118,12 @@
 {% block extra_scripts %}
 <script>
 const fmt = v => 'NPR ' + parseFloat(v||0).toLocaleString('en-IN', {minimumFractionDigits:2});
+let revenueVisible = false;
+function toggleKpiRevenue() {
+  revenueVisible = !revenueVisible;
+  document.getElementById('kpiRevenue').classList.toggle('amount-blurred', !revenueVisible);
+  document.querySelector('#kpiRevenueToggle i').className = revenueVisible ? 'bi bi-eye' : 'bi bi-eye-slash';
+}
 function setDefaultRange() {
   const today = new Date();
   const start = new Date(today); start.setDate(start.getDate()-6);

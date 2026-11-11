@@ -20,13 +20,15 @@ const pos = {
 };
 
 // ── Bootstrap modals ──────────────────────────────────────────────────────
-let cashModal, fonepayModal, receiptModal, splitModal, creditModal;
+let cashModal, fonepayModal, receiptModal, splitModal, creditModal, tableEditModal;
 document.addEventListener('DOMContentLoaded', () => {
-  cashModal     = new bootstrap.Modal(document.getElementById('cashModal'));
-  fonepayModal  = new bootstrap.Modal(document.getElementById('fonepayModal'));
-  receiptModal  = new bootstrap.Modal(document.getElementById('receiptModal'));
-  splitModal    = new bootstrap.Modal(document.getElementById('splitModal'));
-  creditModal   = new bootstrap.Modal(document.getElementById('creditModal'));
+  cashModal      = new bootstrap.Modal(document.getElementById('cashModal'));
+  fonepayModal   = new bootstrap.Modal(document.getElementById('fonepayModal'));
+  receiptModal   = new bootstrap.Modal(document.getElementById('receiptModal'));
+  splitModal     = new bootstrap.Modal(document.getElementById('splitModal'));
+  creditModal    = new bootstrap.Modal(document.getElementById('creditModal'));
+  tableEditModal = new bootstrap.Modal(document.getElementById('tableEditModal'));
+  window.tableEditModal = tableEditModal;
   init();
 });
 
@@ -91,16 +93,104 @@ function renderTableMap() {
     const occupied = t.status === 'OCCUPIED';
     const selected = pos.selectedTable === t.name && pos.orderType === 'DINE_IN';
     let classes = `table-btn ${occupied ? 'occupied' : 'free'} ${selected ? 'selected' : ''}`;
-    return `<button class="${classes}" data-table="${t.name}" data-order-id="${t.order_id || ''}"
-              onclick="selectTable('${t.name}', '${t.order_id || ''}')">
-      <div class="tname">${t.name}</div>
-      <div class="tinfo">${occupied ? (t.order_no || 'Occupied') : 'Free'}</div>
-    </button>`;
+    const nameJs = JSON.stringify(t.name);
+    const orderJs = JSON.stringify(String(t.order_id || ''));
+    return `<div class="table-tile">
+      <button type="button" class="table-edit-btn" title="Edit table" aria-label="Edit table ${escHtml(t.name)}"
+              onclick="openEditTable(${t.id}, event)">
+        <i class="bi bi-pencil-square"></i>
+      </button>
+      <button class="${classes}" data-table="${escHtml(t.name)}" data-order-id="${t.order_id || ''}"
+              onclick="selectTable(${nameJs}, ${orderJs})">
+        <div class="tname">${escHtml(t.name)}</div>
+        <div class="tinfo">${occupied ? escHtml(t.order_no || 'Occupied') : 'Free'}</div>
+      </button>
+    </div>`;
   }).join('');
   // Update takeaway button
   const tw = document.getElementById('takeawayBtn');
   if (pos.orderType === 'TAKEAWAY') tw.classList.add('selected');
   else tw.classList.remove('selected');
+}
+
+function escHtml(str) {
+  return String(str || '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function openAddTable() {
+  document.getElementById('tableEditModalTitle').innerHTML = '<i class="bi bi-plus-square"></i> Add Table';
+  document.getElementById('editTableId').value = '';
+  document.getElementById('editTableName').value = '';
+  document.getElementById('editTableOccupiedNote').style.display = 'none';
+  document.getElementById('deleteTableBtn').style.display = 'none';
+  tableEditModal.show();
+  setTimeout(() => document.getElementById('editTableName').focus(), 200);
+}
+
+function openEditTable(tableId, ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  const t = pos.tables.find(x => x.id === tableId);
+  if (!t) return;
+  document.getElementById('tableEditModalTitle').innerHTML = '<i class="bi bi-pencil-square"></i> Edit Table';
+  document.getElementById('editTableId').value = String(t.id);
+  document.getElementById('editTableName').value = t.name;
+  const occupied = t.status === 'OCCUPIED';
+  document.getElementById('editTableOccupiedNote').style.display = occupied ? '' : 'none';
+  const delBtn = document.getElementById('deleteTableBtn');
+  delBtn.style.display = '';
+  delBtn.disabled = occupied;
+  tableEditModal.show();
+  setTimeout(() => document.getElementById('editTableName').focus(), 200);
+}
+
+async function saveTable() {
+  const id = document.getElementById('editTableId').value;
+  const name = document.getElementById('editTableName').value.trim();
+  if (!name) { showAlert('Enter a table name.', 'warning'); return; }
+  try {
+    if (id) {
+      const old = pos.tables.find(x => String(x.id) === String(id));
+      const oldName = old ? old.name : null;
+      await apiPatch(`/tables/${id}`, {name});
+      if (oldName && pos.selectedTable === oldName) pos.selectedTable = name;
+      showAlert(`Table saved as ${name}.`, 'success');
+    } else {
+      await apiPost('/tables/create', {name});
+      showAlert(`Table ${name} added.`, 'success');
+    }
+    tableEditModal.hide();
+    await loadTables();
+    updateCartHeader();
+  } catch (err) {
+    showAlert(err.message);
+  }
+}
+
+async function confirmDeleteTable() {
+  const id = document.getElementById('editTableId').value;
+  if (!id) return;
+  const t = pos.tables.find(x => String(x.id) === String(id));
+  if (!t) return;
+  if (t.status === 'OCCUPIED') {
+    showAlert('Cannot delete a table with an active order.', 'warning');
+    return;
+  }
+  if (!confirm(`Delete table "${t.name}"? This cannot be undone.`)) return;
+  try {
+    await apiDelete(`/tables/${id}`);
+    if (pos.selectedTable === t.name) {
+      pos.selectedTable = null;
+      clearCartState();
+      renderCart();
+    }
+    tableEditModal.hide();
+    showAlert(`Table ${t.name} deleted.`, 'success');
+    await loadTables();
+    updateCartHeader();
+  } catch (err) {
+    showAlert(err.message);
+  }
 }
 
 async function selectTable(tableName, existingOrderId) {

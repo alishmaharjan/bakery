@@ -142,3 +142,35 @@ body {
 .btn-login:focus {
   box-shadow: 0 0 0 3px rgba(200, 90, 0, 0.35);
 }
+
+/* ── Amount privacy (blur + eye toggle) ─────────────────────────────────── */
+.amount-blurred {
+  filter: blur(8px);
+  user-select: none;
+  pointer-events: none;
+  transition: filter 0.15s ease;
+}
+.privacy-amt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+}
+.privacy-toggle {
+  border: none;
+  background: transparent;
+  padding: 0 2px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.65;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.privacy-toggle:hover,
+.privacy-toggle:focus {
+  opacity: 1;
+  outline: none;
+}
+.privacy-toggle i {
+  font-size: 1rem;
+}

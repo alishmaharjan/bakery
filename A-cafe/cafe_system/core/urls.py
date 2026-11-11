@@ -4,6 +4,8 @@ from . import views
 urlpatterns = [
     # Tables
     path('tables', views.tables_list, name='tables_list'),
+    path('tables/create', views.table_create, name='table_create'),
+    path('tables/<int:table_id>', views.table_detail, name='table_detail'),
 
     # Dashboard
     path('dashboard/overview', views.dashboard_overview, name='dashboard_overview'),

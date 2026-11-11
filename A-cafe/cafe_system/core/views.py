@@ -5,7 +5,7 @@ from functools import wraps
 
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -261,6 +261,86 @@ def tables_list(request):
             'grand_total': str(active['grand_total']) if active else None,
         })
     return _response(True, 'OK', result)
+
+
+@api_login_required
+@csrf_exempt
+@require_http_methods(['POST'])
+def table_create(request):
+    body = _json_body(request)
+    if body is None:
+        return _response(False, 'Invalid JSON', status=400)
+    name = (body.get('name') or '').strip()
+    if not name:
+        return _response(False, 'Table name is required.', status=400)
+    if len(name) > 20:
+        return _response(False, 'Table name must be 20 characters or fewer.', status=400)
+    capacity = body.get('capacity', 4)
+    try:
+        capacity = max(1, int(capacity))
+    except (TypeError, ValueError):
+        capacity = 4
+    try:
+        table = Table.objects.create(name=name, capacity=capacity, is_active=True)
+    except IntegrityError:
+        return _response(False, f'Table "{name}" already exists.', status=400)
+    _audit('ORDER', 'table_create', f'Table {table.name} created', table.id)
+    return _response(True, 'Table created', {'id': table.id, 'name': table.name, 'capacity': table.capacity}, status=201)
+
+
+@api_login_required
+@csrf_exempt
+@require_http_methods(['PATCH', 'DELETE'])
+def table_detail(request, table_id):
+    table = get_object_or_404(Table, pk=table_id)
+
+    if request.method == 'DELETE':
+        occupied = Order.objects.filter(
+            table_no=table.name,
+            status__in=[
+                Order.StatusChoices.OPEN,
+                Order.StatusChoices.CONFIRMED,
+                Order.StatusChoices.PREPARING,
+                Order.StatusChoices.SERVED,
+            ],
+        ).exists()
+        if occupied:
+            return _response(False, 'Cannot delete a table with an active order. Close or pay the order first.', status=400)
+        name = table.name
+        table.delete()
+        _audit('ORDER', 'table_delete', f'Table {name} deleted', table_id)
+        return _response(True, 'Table deleted', {'id': table_id, 'name': name})
+
+    body = _json_body(request)
+    if body is None:
+        return _response(False, 'Invalid JSON', status=400)
+
+    new_name = (body.get('name') or '').strip()
+    if not new_name:
+        return _response(False, 'Table name is required.', status=400)
+    if len(new_name) > 20:
+        return _response(False, 'Table name must be 20 characters or fewer.', status=400)
+
+    old_name = table.name
+    update_fields = ['name']
+    if 'capacity' in body:
+        try:
+            table.capacity = max(1, int(body.get('capacity')))
+            update_fields.append('capacity')
+        except (TypeError, ValueError):
+            pass
+
+    table.name = new_name
+    try:
+        with transaction.atomic():
+            table.save(update_fields=update_fields)
+            if new_name != old_name:
+                Order.objects.filter(table_no=old_name).update(table_no=new_name)
+    except IntegrityError:
+        return _response(False, f'Table "{new_name}" already exists.', status=400)
+
+    _audit('ORDER', 'table_update', f'Table {old_name} renamed to {table.name}', table.id)
+    return _response(True, 'Table updated', {'id': table.id, 'name': table.name, 'capacity': table.capacity})
 
 
 # ---------------------------------------------------------------------------

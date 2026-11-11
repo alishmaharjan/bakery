@@ -28,6 +28,24 @@
   .table-btn:hover   { filter: brightness(1.2); }
   .table-btn .tname  { font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .table-btn .tinfo  { font-size: .65rem; opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .table-tile { position: relative; min-width: 0; }
+  .table-tile .table-btn { width: 100%; padding-right: 22px; }
+  .table-edit-btn {
+    position: absolute; top: 3px; right: 3px; z-index: 2;
+    width: 22px; height: 22px; padding: 0; line-height: 1;
+    border: none; border-radius: 4px;
+    background: rgba(0,0,0,.4); color: var(--cg-gold);
+    font-size: .72rem; display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+  .table-edit-btn:hover { background: var(--cg-gold); color: var(--cg-dark); }
+  .pos-tables-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .table-add-btn {
+    border: 1px solid var(--cg-gold); background: transparent; color: var(--cg-gold);
+    border-radius: 6px; width: 26px; height: 26px; padding: 0; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .table-add-btn:hover { background: var(--cg-gold); color: var(--cg-dark); }
   .takeaway-btn { width: 100%; border-radius: 8px; padding: 9px; font-weight: 700; font-size: .8rem; background: var(--cg-orange); border: 2px solid var(--cg-gold); color: #fff; cursor: pointer; transition: all .15s; }
   .takeaway-btn:hover { background: var(--cg-amber); }
   .takeaway-btn.selected { outline: 3px solid var(--cg-gold); outline-offset: 2px; }
@@ -135,7 +153,12 @@
 
   <!-- ── LEFT: Table Map ── -->
   <div class="pos-tables">
-    <div class="pos-tables-header"><i class="bi bi-grid-3x3-gap"></i> Tables</div>
+    <div class="pos-tables-header">
+      <span><i class="bi bi-grid-3x3-gap"></i> Tables</span>
+      <button type="button" class="table-add-btn" title="Add table" aria-label="Add table" onclick="openAddTable()">
+        <i class="bi bi-plus-lg"></i>
+      </button>
+    </div>
     <div class="pos-tables-body">
       <div class="table-grid mb-2" id="tableGrid">
         <!-- JS renders tables here -->
@@ -400,8 +423,154 @@
     </div>
   </div>
 </div>
+
+<!-- ── TABLE EDIT / ADD MODAL ── -->
+<div class="modal fade" id="tableEditModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:380px">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="tableEditModalTitle"><i class="bi bi-pencil-square"></i> Edit Table</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editTableId" value="">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Table name <span class="text-danger">*</span></label>
+          <input type="text" id="editTableName" class="form-control" maxlength="20" placeholder="e.g. T01" autocomplete="off"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault();saveTable();}">
+        </div>
+        <div class="alert alert-warning py-2 small mb-0" id="editTableOccupiedNote" style="display:none;">
+          <i class="bi bi-exclamation-triangle"></i> This table has an active order. You can rename it, but it cannot be deleted until the order is closed.
+        </div>
+      </div>
+      <div class="modal-footer justify-content-between">
+        <button type="button" class="btn btn-outline-danger" id="deleteTableBtn" onclick="confirmDeleteTable()">
+          <i class="bi bi-trash"></i> Delete
+        </button>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-success" onclick="saveTable()">
+            <i class="bi bi-check-lg"></i> Save
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
 <script src="{% static 'core/pos.js' %}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  if (!window.tableEditModal) {
+    window.tableEditModal = new bootstrap.Modal(document.getElementById('tableEditModal'));
+  }
+});
+
+function escHtml(str) {
+  return String(str || '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderTableMap() {
+  const grid = document.getElementById('tableGrid');
+  grid.innerHTML = pos.tables.map(t => {
+    const occupied = t.status === 'OCCUPIED';
+    const selected = pos.selectedTable === t.name && pos.orderType === 'DINE_IN';
+    const classes = `table-btn ${occupied ? 'occupied' : 'free'} ${selected ? 'selected' : ''}`;
+    const nameJs = JSON.stringify(t.name);
+    const orderJs = JSON.stringify(String(t.order_id || ''));
+    return `<div class="table-tile">
+      <button type="button" class="table-edit-btn" title="Edit table" aria-label="Edit table ${escHtml(t.name)}"
+              onclick="openEditTable(${t.id}, event)">
+        <i class="bi bi-pencil-square"></i>
+      </button>
+      <button class="${classes}" data-table="${escHtml(t.name)}" data-order-id="${t.order_id || ''}"
+              onclick="selectTable(${nameJs}, ${orderJs})">
+        <div class="tname">${escHtml(t.name)}</div>
+        <div class="tinfo">${occupied ? escHtml(t.order_no || 'Occupied') : 'Free'}</div>
+      </button>
+    </div>`;
+  }).join('');
+  const tw = document.getElementById('takeawayBtn');
+  if (pos.orderType === 'TAKEAWAY') tw.classList.add('selected');
+  else tw.classList.remove('selected');
+}
+
+function openAddTable() {
+  document.getElementById('tableEditModalTitle').innerHTML = '<i class="bi bi-plus-square"></i> Add Table';
+  document.getElementById('editTableId').value = '';
+  document.getElementById('editTableName').value = '';
+  document.getElementById('editTableOccupiedNote').style.display = 'none';
+  document.getElementById('deleteTableBtn').style.display = 'none';
+  (window.tableEditModal || tableEditModal).show();
+  setTimeout(() => document.getElementById('editTableName').focus(), 200);
+}
+
+function openEditTable(tableId, ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  const t = pos.tables.find(x => x.id === tableId);
+  if (!t) return;
+  document.getElementById('tableEditModalTitle').innerHTML = '<i class="bi bi-pencil-square"></i> Edit Table';
+  document.getElementById('editTableId').value = String(t.id);
+  document.getElementById('editTableName').value = t.name;
+  const occupied = t.status === 'OCCUPIED';
+  document.getElementById('editTableOccupiedNote').style.display = occupied ? '' : 'none';
+  const delBtn = document.getElementById('deleteTableBtn');
+  delBtn.style.display = '';
+  delBtn.disabled = occupied;
+  (window.tableEditModal || tableEditModal).show();
+  setTimeout(() => document.getElementById('editTableName').focus(), 200);
+}
+
+async function saveTable() {
+  const id = document.getElementById('editTableId').value;
+  const name = document.getElementById('editTableName').value.trim();
+  if (!name) { showAlert('Enter a table name.', 'warning'); return; }
+  try {
+    if (id) {
+      const old = pos.tables.find(x => String(x.id) === String(id));
+      const oldName = old ? old.name : null;
+      await apiPatch(`/tables/${id}`, {name});
+      if (oldName && pos.selectedTable === oldName) pos.selectedTable = name;
+      showAlert(`Table saved as ${name}.`, 'success');
+    } else {
+      await apiPost('/tables/create', {name});
+      showAlert(`Table ${name} added.`, 'success');
+    }
+    (window.tableEditModal || tableEditModal).hide();
+    await loadTables();
+    updateCartHeader();
+  } catch (err) {
+    showAlert(err.message);
+  }
+}
+
+async function confirmDeleteTable() {
+  const id = document.getElementById('editTableId').value;
+  if (!id) return;
+  const t = pos.tables.find(x => String(x.id) === String(id));
+  if (!t) return;
+  if (t.status === 'OCCUPIED') {
+    showAlert('Cannot delete a table with an active order.', 'warning');
+    return;
+  }
+  if (!confirm(`Delete table "${t.name}"? This cannot be undone.`)) return;
+  try {
+    await apiDelete(`/tables/${id}`);
+    if (pos.selectedTable === t.name) {
+      pos.selectedTable = null;
+      clearCartState();
+      renderCart();
+    }
+    (window.tableEditModal || tableEditModal).hide();
+    showAlert(`Table ${t.name} deleted.`, 'success');
+    await loadTables();
+    updateCartHeader();
+  } catch (err) {
+    showAlert(err.message);
+  }
+}
+</script>
 {% endblock %}
